@@ -1,0 +1,121 @@
+app-id: io.sipme.pulseplayer
+
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+
+command: pulse-player
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+
+modules:
+
+  # ------------------------------------------------------------
+  # Pulse Player FFmpeg native addon
+  # ------------------------------------------------------------
+  - name: pulse-player-ffmpeg
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        NODE_INCLUDE_DIR: /usr/lib/sdk/node22/include/node
+
+    build-commands:
+
+      - cmake -S native -B build/linux-x64-release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_PACKAGE=TRUE
+          -DUSE_STATIC_SYSTEM_LIBS=FALSE
+
+      - cmake --build build/linux-x64-release --parallel
+
+      - install -Dm755
+          packages/linux-x64/ffmpeg.node
+          /app/lib/pulse-player-ffmpeg-linux-x64/ffmpeg.node
+
+      - install -Dm644
+          packages/linux-x64/package.json
+          /app/lib/pulse-player-ffmpeg-linux-x64/package.json
+
+    sources:
+      - type: git
+        url: https://github.com/freetalk-team/pulse-player-ffmpeg.git
+        tag: v1.0.0
+        commit: 6d2b2206fe70b8342a94be1ad5bc50edac1021ae
+
+      - type: archive
+        url: https://registry.npmjs.org/node-addon-api/-/node-addon-api-8.9.0.tgz
+        sha256: 19b87e2ce3a77fec0121ac97d7db088aae28aacfff481adab50d5f61b70e68f4
+        dest: node_modules/node-addon-api
+
+
+  # ------------------------------------------------------------
+  # Pulse Player
+  # ------------------------------------------------------------
+  - name: pulse-player
+    buildsystem: simple
+
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        XDG_CACHE_HOME: /run/build/pulse-player/flatpak-node/cache
+        npm_config_cache: /run/build/pulse-player/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        NODE_INCLUDE_DIR: /usr/lib/sdk/node22/include/node
+
+    build-commands:
+      - npm ci --offline --ignore-scripts
+      - npm run build:release
+      - npx electron-builder --linux --dir
+
+      # Install the Electron application
+      - mkdir -p /app/lib/pulse-player
+      - cp -a dist/linux-unpacked/. /app/lib/pulse-player/
+
+      - rm -rf /app/lib/pulse-player/resources/app.asar.unpacked/node_modules/@freetalk-team/pulse-player-ffmpeg-linux-x64
+
+      - mkdir -p /app/lib/pulse-player/resources/app.asar.unpacked/node_modules/@freetalk-team/pulse-player-ffmpeg-linux-x64
+
+      - cp -a
+          /app/lib/pulse-player-ffmpeg-linux-x64/.
+          /app/lib/pulse-player/resources/app.asar.unpacked/node_modules/@freetalk-team/pulse-player-ffmpeg-linux-x64/
+
+      # Remove temporary addon staging directory
+      - rm -rf /app/lib/pulse-player-ffmpeg-linux-x64
+
+      - install -Dm755 pulse-player-launcher /app/bin/pulse-player
+      - install -Dm644 io.sipme.pulseplayer.desktop /app/share/applications/io.sipme.pulseplayer.desktop
+      - install -Dm644 io.sipme.pulseplayer.png /app/share/icons/hicolor/256x256/apps/io.sipme.pulseplayer.png
+      - install -Dm644 io.sipme.pulseplayer.metainfo.xml /app/share/metainfo/io.sipme.pulseplayer.metainfo.xml
+
+    sources:
+      - type: git
+        url: https://github.com/freetalk-team/pulse-player.git
+        tag: v1.0.8
+        commit: 3002335024702c1ea4f38d4e2e041cc850d2683d
+
+      - generated-sources.json
+
+      - type: file
+        path: pulse-player-launcher
+        dest-filename: pulse-player-launcher
+
+      - type: file
+        path: io.sipme.pulseplayer.desktop
+
+      - type: file
+        path: io.sipme.pulseplayer.png
+
+      - type: file
+        path: io.sipme.pulseplayer.metainfo.xml
+        
